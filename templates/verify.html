@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card auth-card">
+	<h2>Verify your email</h2>
+	<p class="muted">We sent a 6‑digit code to {{ email }}. Enter it below.</p>
+	<form method="post" class="form">
+		<input type="hidden" name="email" value="{{ email }}">
+		<label>Verification code</label>
+		<input type="text" name="code" inputmode="numeric" maxlength="6" required />
+		<button class="btn btn-primary" type="submit">Verify</button>
+		<p class="muted">Didn’t get a code? Try login to resend.</p>
+	</form>
+</div>
+{% endblock %}

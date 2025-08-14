@@ -1,0 +1,49 @@
+<!-- templates/report.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="card form-card">
+	<h2>Report an Issue</h2>
+	<form method="post" enctype="multipart/form-data" class="form" id="report-form">
+		<label>Issue Title</label>
+		<input type="text" name="title" required maxlength="120" />
+		<label>Description</label>
+		<textarea name="description" rows="5" required></textarea>
+		<label>Category</label>
+		<select name="category" required>
+			<option value="">Select</option>
+			<option>Pothole</option>
+			<option>Street Light</option>
+			<option>Garbage</option>
+			<option>Water</option>
+			<option>Electricity</option>
+			<option>Public Safety</option>
+			<option>Other</option>
+		</select>
+		<label>Urgency</label>
+		<select name="urgency">
+			<option>Low</option>
+			<option selected>Normal</option>
+			<option>High</option>
+			<option>Critical</option>
+		</select>
+		<label>Tag Officials</label>
+		<select name="assigned_to" multiple size="4">
+			{% for a in admins %}
+			<option value="{{ a['_id'] }}">{{ a['email'] }}</option>
+			{% endfor %}	
+		</select>
+		<p class="muted">Hold Ctrl (Cmd on Mac) to select multiple.</p>
+		<label>Location</label>
+		<input type="text" name="location_text" placeholder="e.g., 123 Main St, Springfield" />
+		<div class="row">
+			<button type="button" class="btn btn-secondary" id="btn-gps">Use my GPS</button>
+			<span class="muted" id="gps-status"></span>
+		</div>
+		<input type="hidden" name="latitude" id="latitude" />
+		<input type="hidden" name="longitude" id="longitude" />
+		<label>Upload Photo</label>
+		<input type="file" name="photo" accept="image/*" />
+		<button class="btn btn-primary" type="submit">Submit</button>
+	</form>
+</div>
+{% endblock %}

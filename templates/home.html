@@ -1,0 +1,20 @@
+<!-- templates/home.html -->
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+	<div class="hero-overlay"></div>
+	<div class="hero-inner">
+		<h1 class="hero-title">Report. Track. Resolve.</h1>
+		<p class="hero-subtitle">Empowering citizens and authorities to improve communities together.</p>
+		<a class="btn btn-primary btn-lg" href="{{ url_for('report_issue') }}">Report an Issue</a>
+	</div>
+</section>
+<section class="section">
+	<h2 class="section-title">Community Impact</h2>
+	<p class="section-text">Browse the dashboard to see reported issues, upvote, and discuss solutions.</p>
+	<div class="cta-row">
+		<a class="btn btn-secondary" href="{{ url_for('dashboard') }}">View Dashboard</a>
+		<a class="btn btn-outline" href="{{ url_for('analytics') }}">View Analytics</a>
+	</div>
+</section>
+{% endblock %}

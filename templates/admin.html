@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="metrics">
+	<div class="metric-card">
+		<div class="metric-title">Total Issues</div>
+		<div class="metric-value">{{ metrics.total }}</div>
+	</div>
+	<div class="metric-card">
+		<div class="metric-title">Resolved %</div>
+		<div class="metric-value">{{ metrics.resolved_pct }}%</div>
+	</div>
+	<div class="metric-card">
+		<div class="metric-title">Pending</div>
+		<div class="metric-value">{{ metrics.pending }}</div>
+	</div>
+	<div class="metric-card">
+		<div class="metric-title">Avg Resolution Time</div>
+		<div class="metric-value">{{ metrics.avg_resolution_days or 0 }} days</div>
+	</div>
+</div>
+
+<div class="filters card">
+	<form method="get" class="filters-form">
+		<label class="row" style="gap:6px; align-items:center;">
+			<input type="checkbox" name="mine" value="1" {% if args.get('mine')=='1' %}checked{% endif %} />
+			<span>Assigned to me</span>
+		</label>
+		<input type="text" name="q" placeholder="Search" value="{{ args.get('q','') }}" />
+		<select name="category">
+			<option value="">All Categories</option>
+			{% for c in ['Pothole','Street Light','Garbage','Water','Electricity','Public Safety','Other'] %}
+			<option value="{{ c }}" {% if args.get('category')==c %}selected{% endif %}>{{ c }}</option>
+			{% endfor %}
+		</select>
+		<select name="status">
+			<option value="">All Status</option>
+			{% for s in ['Reported','In Progress','Resolved'] %}
+			<option value="{{ s }}" {% if args.get('status')==s %}selected{% endif %}>{{ s }}</option>
+			{% endfor %}
+		</select>
+		<select name="sort">
+			<option value="created_at" {% if args.get('sort','created_at')=='created_at' %}selected{% endif %}>Newest</option>
+			<option value="upvotes" {% if args.get('sort')=='upvotes' %}selected{% endif %}>Upvotes</option>
+			<option value="status" {% if args.get('sort')=='status' %}selected{% endif %}>Status</option>
+			<option value="urgency" {% if args.get('sort')=='urgency' %}selected{% endif %}>Urgency</option>
+		</select>
+		<button class="btn btn-secondary" type="submit">Apply</button>
+	</form>
+</div>
+
+<div class="admin-grid">
+	{% for issue in issues %}
+	<div class="card admin-issue">
+		<div class="card-media">
+			{% if issue.get('photo') %}
+			<img src="{{ url_for('uploaded_file', filename=issue['photo']) }}" alt="Issue photo" />
+			{% endif %}
+		</div>
+		<div class="card-body">
+			<h3 class="card-title">{{ issue['title'] }}</h3>
+			<p class="muted">{{ issue['category'] }} • {{ issue.get('location_text','') }}</p>
+			<p>Upvotes: {{ issue.get('upvotes_count',0) }}</p>
+
+			<form method="post" action="{{ url_for('admin_update_issue', issue_id=issue['_id']|string) }}" enctype="multipart/form-data" class="form compact">
+				<label>Status</label>
+				<select name="status">
+					{% for s in ['Reported','In Progress','Resolved'] %}
+					<option value="{{ s }}" {% if issue['status']==s %}selected{% endif %}>{{ s }}</option>
+					{% endfor %}
+				</select>
+				<label>Urgency</label>
+				<select name="urgency">
+					{% for u in ['Low','Normal','High','Critical'] %}
+					<option value="{{ u }}" {% if issue.get('urgency','Normal')==u %}selected{% endif %}>{{ u }}</option>
+					{% endfor %}
+				</select>
+				<label>Resolution Notes</label>
+				<textarea name="resolution_notes" rows="2">{{ issue.get('resolution_notes','') or '' }}</textarea>
+				<label>Resolution Photo</label>
+				<input type="file" name="resolution_photo" accept="image/*" />
+				<button class="btn btn-primary" type="submit">Update</button>
+			</form>
+
+			<form method="post" action="{{ url_for('add_issue_action', issue_id=issue['_id']|string) }}" enctype="multipart/form-data" class="form compact" style="margin-top:10px;">
+				<label>Add Action (note/photo)</label>
+				<textarea name="note" rows="2" placeholder="e.g., Site visit scheduled for tomorrow"></textarea>
+				<input type="file" name="photo" accept="image/*" />
+				<button class="btn btn-secondary" type="submit">Add Action</button>
+			</form>
+		</div>
+	</div>
+	{% else %}
+	<p class="muted">No issues.</p>
+	{% endfor %}
+</div>
+{% endblock %}

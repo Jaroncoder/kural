@@ -1,0 +1,52 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Kural</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body class="page">
+	<nav class="navbar">
+		<div class="nav-brand">Kural</div>
+		<input type="checkbox" id="nav-toggle" class="nav-toggle">
+		<label for="nav-toggle" class="nav-toggle-label"><span></span></label>
+		<ul class="nav-links">
+			<li><a href="{{ url_for('home') }}">Home</a></li>
+			<li><a href="{{ url_for('report_issue') }}">Report Issue</a></li>
+			<li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+			<li><a href="{{ url_for('feed') }}">Community Feed</a></li>
+			<li><a href="{{ url_for('analytics') }}">Analytics</a></li>
+			<li><a href="{{ url_for('profile') }}">Profile</a></li>
+			{% if current_user.is_authenticated %}
+				{% if current_user.is_admin() %}<li><a href="{{ url_for('admin_panel') }}">Admin</a></li>{% endif %}
+				<li><a href="{{ url_for('logout') }}">Logout</a></li>
+			{% else %}
+				<li><a href="{{ url_for('login') }}">Login</a></li>
+				<li><a href="{{ url_for('signup') }}">Signup</a></li>
+			{% endif %}
+		</ul>
+	</nav>
+
+	{% with messages = get_flashed_messages(with_categories=true) %}
+	{% if messages %}
+	<div class="flash-container">
+		{% for category, message in messages %}
+			<div class="flash flash-{{ category }}">{{ message }}</div>
+		{% endfor %}
+	</div>
+	{% endif %}
+	{% endwith %}
+
+	<main class="content fade-in">
+		{% block content %}{% endblock %}
+	</main>
+
+	<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+	{% block scripts %}{% endblock %}
+</body>
+</html>

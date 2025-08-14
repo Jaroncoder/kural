@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro fmt(dt) -%}
+  {{ dt.strftime('%Y-%m-%d %H:%M') if dt else '' }}
+{%- endmacro %}
+
+<div class="card issue-detail">
+	<div class="detail-header">
+		<h2>{{ issue.get('title','') }}</h2>
+		<div class="chips">
+			<div class="chip chip-{{ (issue.get('status') or 'Reported')|lower|replace(' ','-') }}">{{ issue.get('status','Reported') }}</div>
+			<div class="chip chip-urgency">{{ issue.get('urgency','Normal') }}</div>
+		</div>
+		{% if assigned_admins and assigned_admins|length > 0 %}
+		<p class="muted">Tagged officials:
+			{% for a in assigned_admins %}
+			<span class="chip">{{ a['email'] }}</span>
+			{% endfor %}
+		</p>
+		{% endif %}
+	</div>
+
+	<div class="detail-body">
+		<div class="media">
+			{% if issue.get('photo') %}
+			<img src="{{ url_for('uploaded_file', filename=issue['photo']) }}" alt="Issue photo" />
+			{% endif %}
+		</div>
+
+		<p class="muted">{{ issue.get('category','') }} • {{ issue.get('location_text','') }}</p>
+		<p>{{ issue.get('description','') }}</p>
+
+		<div class="row space-between">
+			<form method="post" action="{{ url_for('upvote_issue', issue_id=issue['_id']|string) }}">
+				<button class="btn btn-secondary" type="submit">▲ Upvote ({{ upvotes_count or 0 }})</button>
+			</form>
+			{% if issue.get('created_at') %}
+			<span class="muted">Reported {{ fmt(issue.get('created_at')) }}</span>
+			{% endif %}
+		</div>
+
+		<div class="card" style="margin-top:14px;">
+			<h3>Updates</h3>
+			<ul style="list-style:none; padding-left:0; margin:10px 0; display:grid; gap:10px;">
+				<!-- Initial report -->
+				<li>
+					<div class="row space-between">
+						<strong>Reported</strong>
+						<span class="muted">{{ fmt(issue.get('created_at')) }}</span>
+					</div>
+					{% if issue.get('photo') %}
+					<img class="resolution-photo" style="margin-top:8px;" src="{{ url_for('uploaded_file', filename=issue['photo']) }}" alt="Report photo" />
+					{% endif %}
+				</li>
+
+				<!-- All subsequent actions/status updates (requires actions passed from view) -->
+				{% for ac in actions|default([]) %}
+				<li>
+					<div class="row space-between">
+						<strong>{{ ac.get('status') or 'Action' }}</strong>
+						<span class="muted">{{ (ac.get('created_at') and ac.get('created_at').strftime('%Y-%m-%d %H:%M')) or '' }}</span>
+					</div>
+					{% if ac.get('note') %}
+					<div style="margin-top:6px;">{{ ac.get('note') }}</div>
+					{% endif %}
+					{% if ac.get('photo') %}
+					<img class="resolution-photo" style="margin-top:8px;" src="{{ url_for('uploaded_file', filename=ac['photo']) }}" alt="Update photo" />
+					{% endif %}
+					<div class="muted" style="margin-top:4px;">By {{ ac.get('actor_role','') }}</div>
+				</li>
+				{% endfor %}
+
+				<!-- Final resolved marker if present -->
+				{% if issue.get('resolved_at') %}
+				<li>
+					<div class="row space-between">
+						<strong>Resolved</strong>
+						<span class="muted">{{ fmt(issue.get('resolved_at')) }}</span>
+					</div>
+					{% if issue.get('resolution_notes') %}
+					<div style="margin-top:6px;">{{ issue.get('resolution_notes') }}</div>
+					{% endif %}
+					{% if issue.get('resolution_photo') %}
+					<img class="resolution-photo" style="margin-top:8px;" src="{{ url_for('uploaded_file', filename=issue['resolution_photo']) }}" alt="Resolution photo" />
+					{% endif %}
+				</li>
+				{% endif %}
+			</ul>
+
+			{% set has_actions = (actions|default([]))|length > 0 %}
+			{% if not has_actions and issue.get('status','Reported') == 'Reported' and not issue.get('resolution_notes') and not issue.get('resolution_photo') %}
+				<p class="muted">No updates from authorities yet.</p>
+			{% endif %}
+		</div>
+	</div>
+</div>
+
+<div class="card comments-card">
+	<h3>Comments</h3>
+	{% if current_user.is_authenticated %}
+	<form method="post" action="{{ url_for('comment_issue', issue_id=issue['_id']|string) }}" class="form">
+		<textarea name="text" rows="3" placeholder="Add a comment"></textarea>
+		<button class="btn btn-primary" type="submit">Post</button>
+	</form>
+	{% else %}
+	<p class="muted">Please <a href="{{ url_for('login') }}">login</a> to comment.</p>
+	{% endif %}
+
+	<div class="comments">
+		{% for c in comments %}
+		<div class="comment">
+			<div class="comment-meta">
+				<span class="muted">{{ fmt(c.get('created_at')) }}</span>
+			</div>
+			<p>{{ c.get('text','') }}</p>
+		</div>
+		{% else %}
+		<p class="muted">No comments yet.</p>
+		{% endfor %}
+	</div>
+</div>
+{% endblock %}

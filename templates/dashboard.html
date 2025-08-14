@@ -1,0 +1,48 @@
+<!-- templates/dashboard.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="filters card">
+	<form method="get" class="filters-form">
+		<input type="text" name="q" placeholder="Search title, description, location" value="{{ args.get('q','') }}" />
+		<select name="category">
+			<option value="">All Categories</option>
+			{% for c in ['Pothole','Street Light','Garbage','Water','Electricity','Public Safety','Other'] %}
+			<option value="{{ c }}" {% if args.get('category')==c %}selected{% endif %}>{{ c }}</option>
+			{% endfor %}
+		</select>
+		<select name="status">
+			<option value="">All Status</option>
+			{% for s in ['Reported','In Progress','Resolved'] %}
+			<option value="{{ s }}" {% if args.get('status')==s %}selected{% endif %}>{{ s }}</option>
+			{% endfor %}
+		</select>
+		<button class="btn btn-secondary" type="submit">Filter</button>
+	</form>
+</div>
+
+<div class="grid">
+	{% for issue in issues %}
+	<a class="card card-issue" href="{{ url_for('issue_detail', issue_id=issue['_id']|string) }}">
+		<div class="card-media">
+			{% if issue.get('photo') %}
+			<img src="{{ url_for('uploaded_file', filename=issue['photo']) }}" alt="Issue photo" />
+			{% else %}
+			<div class="placeholder">No Photo</div>
+			{% endif %}
+		</div>
+		<div class="card-body">
+			<div class="chip chip-{{ issue['status']|lower|replace(' ','-') }}">{{ issue['status'] }}</div>
+			<div class="chip chip-urgency">{{ issue.get('urgency','Normal') }}</div>
+			<h3 class="card-title">{{ issue['title'] }}</h3>
+			<p class="muted">{{ issue['category'] }} • {{ issue.get('location_text','') }}</p>
+			<div class="row space-between">
+				<span class="muted">{{ issue['created_at'].strftime('%Y-%m-%d') }}</span>
+				<span class="upvotes">▲ {{ issue.get('upvotes_count', 0) }}</span>
+			</div>
+		</div>
+	</a>
+	{% else %}
+	<p class="muted">No issues found.</p>
+	{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+<!-- templates/analytics.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="grid analytics-grid">
+	<div class="card">
+		<h3>Reported vs Resolved</h3>
+		<canvas id="lineChart"></canvas>
+	</div>
+	<div class="card">
+		<h3>Category Breakdown</h3>
+		<canvas id="pieChart"></canvas>
+	</div>
+	<div class="card">
+		<h3>Area Leaderboard</h3>
+		<canvas id="barChart"></canvas>
+	</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+{% endblock %}
