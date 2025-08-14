@@ -65,9 +65,6 @@ login_manager.init_app(app)
 otps_col = db["EmailOTPs"]
 otps_col.create_index([("email", ASCENDING)], name="email_idx")
 otps_col.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
-mobile_otps_col = db["MobileOTPs"]
-mobile_otps_col.create_index([("mobile", ASCENDING)], name="mobile_idx")
-mobile_otps_col.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
 
 class User(UserMixin):
 	def __init__(self, user_doc):
@@ -162,40 +159,6 @@ def send_otp_email(to_email: str, code: str) -> bool:
 	except Exception as e:
 		print("Email send error:", e)
 		return False
-	
-def is_profile_complete(user_doc):
-	return bool(
-		user_doc.get("city") and
-		user_doc.get("area") and
-		user_doc.get("address") and
-		user_doc.get("mobile") and
-		user_doc.get("is_mobile_verified")
-	)
-
-def send_sms(to_mobile: str, body: str) -> bool:
-	account_sid = os.getenv("TWILIO_SID")
-	auth_token = os.getenv("TWILIO_TOKEN")
-	from_number = os.getenv("TWILIO_FROM")
-	if not account_sid or not auth_token or not from_number:
-		print(f"[DEV] SMS to {to_mobile}: {body}")
-		return True
-	try:
-		from twilio.rest import Client
-		client = Client(account_sid, auth_token)
-		client.messages.create(body=body, from_=from_number, to=to_mobile)
-		return True
-	except Exception as e:
-		print("SMS send error:", e)
-		return False
-	
-@app.context_processor
-def inject_profile_status():
-	user_doc = None
-	complete = False
-	if current_user.is_authenticated:
-		user_doc = users_col.find_one({"_id": ObjectId(current_user.id)}, {"password_hash": 0})
-		complete = is_profile_complete(user_doc or {})
-	return {"current_user_doc": user_doc, "profile_complete": complete}
 
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
@@ -285,68 +248,6 @@ def signup():
 		flash("We sent a verification code to your email.", "info")
 		return redirect(url_for("verify", email=email))
 	return render_template("signup.html")
-
-@app.route("/profile", methods=["GET", "POST"])
-@login_required
-def profile():
-	if request.method == "POST":
-		city = request.form.get("city", "").strip()
-		area = request.form.get("area", "").strip()
-		address = request.form.get("address", "").strip()
-		mobile = request.form.get("mobile", "").strip()
-
-		update = {"city": city, "area": area, "address": address}
-		cur = users_col.find_one({"_id": ObjectId(current_user.id)}, {"mobile": 1})
-		if mobile and mobile != (cur.get("mobile") or ""):
-			update["mobile"] = mobile
-			update["is_mobile_verified"] = False
-
-		users_col.update_one({"_id": ObjectId(current_user.id)}, {"$set": update})
-		flash("Profile saved.", "success")
-		return redirect(url_for("profile"))
-
-	user_doc = users_col.find_one({"_id": ObjectId(current_user.id)}, {"password_hash": 0})
-	return render_template("profile.html", user=user_doc)
-
-@app.route("/profile/send-mobile-otp", methods=["POST"])
-@login_required
-def send_mobile_otp():
-	user = users_col.find_one({"_id": ObjectId(current_user.id)}, {"mobile": 1})
-	mobile = user.get("mobile")
-	if not mobile:
-		flash("Add a mobile number first.", "warning")
-		return redirect(url_for("profile"))
-	code = generate_otp()
-	now = datetime.datetime.now(datetime.UTC)
-	mobile_otps_col.delete_many({"mobile": mobile})
-	mobile_otps_col.insert_one({
-		"mobile": mobile,
-		"code": code,
-		"created_at": now,
-		"expires_at": now + datetime.timedelta(minutes=10)
-	})
-	send_sms(mobile, f"Your Civic Pulse verification code is {code}. It expires in 10 minutes.")
-	flash("Verification code sent to your mobile.", "info")
-	return redirect(url_for("profile"))
-
-@app.route("/profile/verify-mobile", methods=["POST"])
-@login_required
-def verify_mobile():
-	code = request.form.get("code", "").strip()
-	user = users_col.find_one({"_id": ObjectId(current_user.id)}, {"mobile": 1})
-	mobile = user.get("mobile")
-	now = datetime.datetime.now(datetime.UTC)
-	otp = mobile_otps_col.find_one({"mobile": mobile})
-	exp = otp.get("expires_at") if otp else None
-	if isinstance(exp, datetime.datetime) and exp.tzinfo is None:
-		exp = exp.replace(tzinfo=datetime.UTC)
-	if not otp or otp.get("code") != code or not exp or exp < now:
-		flash("Invalid or expired mobile code.", "danger")
-		return redirect(url_for("profile"))
-	users_col.update_one({"_id": ObjectId(current_user.id)}, {"$set": {"is_mobile_verified": True}})
-	mobile_otps_col.delete_many({"mobile": mobile})
-	flash("Mobile verified.", "success")
-	return redirect(url_for("profile"))
 
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
