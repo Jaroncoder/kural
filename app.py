@@ -26,45 +26,49 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
-import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# Use local uploads in dev, /tmp on Vercel (serverless is read-only except /tmp)
+_default_upload = os.path.join(BASE_DIR, "uploads")
+if os.environ.get("VERCEL") == "1" or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+	_default_upload = "/tmp/uploads"
+UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER") or _default_upload
+
 app = Flask(
 	__name__,
 	template_folder=os.path.join(BASE_DIR, "templates"),
 	static_folder=os.path.join(BASE_DIR, "static")
 )
-print("Jinja search paths:", app.jinja_loader.searchpath)
 app.secret_key = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Database
-client = MongoClient(MONGO_URI)
+# Database (be resilient if DB unreachable during cold start)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tz_aware=True)
 db = client["civic_engagement"]
 users_col = db["Users"]
 issues_col = db["Issues"]
 comments_col = db["Comments"]
 upvotes_col = db["Upvotes"]
+otps_col = db["EmailOTPs"]
 
-# Indexes
-upvotes_col.create_index([("issue_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
-issues_col.create_index([("created_at", DESCENDING)])
-issues_col.create_index([("status", ASCENDING), ("category", ASCENDING)])
-comments_col.create_index([("issue_id", ASCENDING), ("created_at", DESCENDING)])
-users_col.create_index([("email", ASCENDING)], unique=True)
+# Indexes (wrap to avoid crashing function import on Vercel)
+try:
+	upvotes_col.create_index([("issue_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
+	issues_col.create_index([("created_at", DESCENDING)])
+	issues_col.create_index([("status", ASCENDING), ("category", ASCENDING)])
+	comments_col.create_index([("issue_id", ASCENDING), ("created_at", DESCENDING)])
+	users_col.create_index([("email", ASCENDING)], unique=True)
+	otps_col.create_index([("email", ASCENDING)], name="email_idx")
+	otps_col.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+except Exception as e:
+	app.logger.error("Mongo init/index error: %s", e)
 
 # Auth
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
-
-#otp
-otps_col = db["EmailOTPs"]
-otps_col.create_index([("email", ASCENDING)], name="email_idx")
-otps_col.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
 
 class User(UserMixin):
 	def __init__(self, user_doc):
@@ -120,7 +124,11 @@ def save_upload(file_storage):
 	filename = secure_filename(file_storage.filename)
 	unique_name = f"{uuid.uuid4().hex}_{filename}"
 	path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-	file_storage.save(path)
+	try:
+		file_storage.save(path)
+	except Exception as e:
+		app.logger.error("Upload save error: %s", e)
+		return None
 	return unique_name
 
 def get_admin_users():
@@ -151,14 +159,23 @@ def send_otp_email(to_email: str, code: str) -> bool:
 	msg["To"] = to_email
 	msg.set_content(body)
 	try:
-		with smtplib.SMTP(host, port) as server:
-			server.starttls()
-			server.login(user, password)
-			server.send_message(msg)
+		if port == 465:
+			with smtplib.SMTP_SSL(host, port) as server:
+				server.login(user, password)
+				server.send_message(msg)
+		else:
+			with smtplib.SMTP(host, port) as server:
+				server.starttls()
+				server.login(user, password)
+				server.send_message(msg)
 		return True
 	except Exception as e:
 		print("Email send error:", e)
 		return False
+
+@app.route("/favicon.ico")
+def favicon():
+	return ("", 204)
 
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
@@ -180,7 +197,6 @@ def login():
 			# Block login until email is verified
 			if not user_doc.get("is_verified"):
 				now = datetime.datetime.now(datetime.UTC)
-				# Create OTP if none exists (or you can always resend)
 				existing_otp = otps_col.find_one({"email": email})
 				if not existing_otp:
 					code = generate_otp()
@@ -277,7 +293,6 @@ def verify():
 		return redirect(url_for("login"))
 	return render_template("verify.html", email=email)
 
-
 @app.route("/logout")
 @login_required
 def logout():
@@ -333,11 +348,11 @@ def report_issue():
 					"note": "Issue reported",
 					"status": "Reported",
 					"photo": photo_name,
-					"created_at": datetime.datetime.utcnow()
+					"created_at": datetime.datetime.now(datetime.UTC)
 				}
 			],
-			"created_at": datetime.datetime.utcnow(),
-			"updated_at": datetime.datetime.utcnow(),
+			"created_at": datetime.datetime.now(datetime.UTC),
+			"updated_at": datetime.datetime.now(datetime.UTC),
 			"resolution_notes": None,
 			"resolution_photo": None,
 			"resolved_at": None
@@ -348,6 +363,7 @@ def report_issue():
 
 	# GET
 	return render_template("report.html", admins=get_admin_users())
+
 def build_issue_filters(args):
 	query = {}
 	text = args.get("q", "").strip()
@@ -392,26 +408,21 @@ def dashboard():
 
 @app.route("/feed")
 def feed():
-	# Reuse your filter builder so search/category/status work if you add query params
 	query = build_issue_filters(request.args)
-
-	# Get issues with upvote counts using your existing helper
 	issues = fetch_issues_with_upvotes(query, sort_field="created_at", sort_dir=-1, limit=200)
 
-	# Compute sort variants
 	def urgency_score(u):
 		order = {"Critical": 3, "High": 2, "Normal": 1, "Low": 0}
 		return order.get((u or "Normal"), 1)
 
 	sort_mode = request.args.get("sort", "hot")  # hot | top | new | urgent
-
 	if sort_mode == "top":
 		issues.sort(key=lambda i: (i.get("upvotes_count", 0), i.get("created_at")), reverse=True)
 	elif sort_mode == "urgent":
 		issues.sort(key=lambda i: (urgency_score(i.get("urgency")), i.get("upvotes_count", 0), i.get("created_at")), reverse=True)
 	elif sort_mode == "new":
 		issues.sort(key=lambda i: i.get("created_at"), reverse=True)
-	else:  # hot: urgency first, then upvotes, then recency
+	else:
 		issues.sort(key=lambda i: (urgency_score(i.get("urgency")), i.get("upvotes_count", 0), i.get("created_at")), reverse=True)
 
 	return render_template("feed.html", issues=issues, args=request.args, sort=sort_mode)
@@ -455,11 +466,11 @@ def add_issue_action(issue_id):
 		"note": note if note else None,
 		"photo": photo_name,
 		"status": None,
-		"created_at": datetime.datetime.utcnow()
+		"created_at": datetime.datetime.now(datetime.UTC)
 	}
 	issues_col.update_one(
 		{"_id": ObjectId(issue_id)},
-		{"$push": {"actions": action}, "$set": {"updated_at": datetime.datetime.utcnow()}}
+		{"$push": {"actions": action}, "$set": {"updated_at": datetime.datetime.now(datetime.UTC)}}
 	)
 	flash("Action update added.", "success")
 	return redirect(url_for("issue_detail", issue_id=issue_id))
@@ -547,17 +558,17 @@ def admin_update_issue(issue_id):
 		"note": notes if notes else None,
 		"photo": photo_name,
 		"status": status,
-		"created_at": datetime.datetime.utcnow()
+		"created_at": datetime.datetime.now(datetime.UTC)
 	}
 
 	update_doc = {
 		"status": status,
 		"urgency": urgency,
 		"resolution_notes": notes if notes else None,
-		"updated_at": datetime.datetime.utcnow()
+		"updated_at": datetime.datetime.now(datetime.UTC)
 	}
 	if status == "Resolved":
-		update_doc["resolved_at"] = datetime.datetime.utcnow()
+		update_doc["resolved_at"] = datetime.datetime.now(datetime.UTC)
 	if photo_name:
 		update_doc["resolution_photo"] = photo_name
 
@@ -582,7 +593,6 @@ def api_analytics_summary():
 
 @app.route("/api/analytics/time-series")
 def api_time_series():
-	# Monthly reported and resolved counts for last 12 months
 	now = datetime.datetime.now(datetime.UTC)
 	start = (now.replace(day=1) - datetime.timedelta(days=365)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 	pipeline_reported = [
@@ -606,7 +616,6 @@ def api_time_series():
 			key = f"{cur.year}-{cur.month:02d}"
 			labels.append(key)
 			data.append(by_key.get(key, 0))
-			# next month
 			year = cur.year + (1 if cur.month == 12 else 0)
 			month = 1 if cur.month == 12 else cur.month + 1
 			cur = cur.replace(year=year, month=month)
