@@ -2,6 +2,11 @@
 import os
 import uuid
 import datetime
+# add after: import datetime
+try:
+	UTC = datetime.UTC
+except AttributeError:
+	UTC = datetime.timezone.utc
 from functools import wraps
 import smtplib
 from email.message import EmailMessage
