@@ -21,7 +21,6 @@
 			<li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
 			<li><a href="{{ url_for('feed') }}">Community Feed</a></li>
 			<li><a href="{{ url_for('analytics') }}">Analytics</a></li>
-			<li><a href="{{ url_for('profile') }}">Profile</a></li>
 			{% if current_user.is_authenticated %}
 				{% if current_user.is_admin() %}<li><a href="{{ url_for('admin_panel') }}">Admin</a></li>{% endif %}
 				<li><a href="{{ url_for('logout') }}">Logout</a></li>
